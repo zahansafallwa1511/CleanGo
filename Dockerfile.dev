@@ -1,0 +1,19 @@
+FROM golang:1.25-alpine
+
+WORKDIR /app
+
+# Install Air for hot reload
+RUN go install github.com/air-verse/air@latest
+
+# Copy go mod files first for better caching
+COPY go.mod go.sum* ./
+RUN go mod download
+
+# Copy the rest of the application
+COPY . .
+
+# Expose port (adjust if your app uses a different port)
+EXPOSE 8080
+
+# Run with Air for hot reload
+CMD ["air", "-c", ".air.toml"]

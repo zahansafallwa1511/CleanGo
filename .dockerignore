@@ -1,0 +1,59 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+README.md
+LICENSE
+docs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Air tmp directory
+tmp/
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+build/
+
+# Test files
+*_test.go
+*.test
+coverage.html
+*.out
+
+# Docker files (avoid recursive builds)
+Dockerfile
+Dockerfile.*
+docker-compose*.yml
+.dockerignore
+
+# Logs
+*.log
+logs/
+
+# Debug
+debug
+__debug_bin*
+
+# Vendor (if using go mod, not needed in container)
+vendor/
