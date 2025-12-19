@@ -9,12 +9,27 @@ import (
 	"time"
 
 	"cleanandclean/internal"
+	"cleanandclean/internal/adapter/interfaces"
 	"cleanandclean/internal/infrastructure"
 )
 
 func main() {
 	factory := infrastructure.NewDefaultFactory()
-	project := internal.NewProject("Clean Project", factory)
+
+	config := &internal.ProjectConfig{
+		CORS: &interfaces.CORSConfig{
+			AllowOrigins:     []string{"*"},
+			AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+			AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+			AllowCredentials: true,
+		},
+		RateLimit: &interfaces.RateLimitConfig{
+			RequestsPerMinute: 100,
+			BurstSize:         10,
+		},
+	}
+
+	project := internal.NewProject("Clean Project", factory, config)
 	project.Initialize("Clean Application", "1.0.0")
 
 	if err := project.Start(); err != nil {

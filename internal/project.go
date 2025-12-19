@@ -19,21 +19,30 @@ type IDependencyFactory interface {
 	CreateLogger() ILogger
 }
 
+// ProjectConfig holds all configuration for the project
+type ProjectConfig struct {
+	CORS      *interfaces.CORSConfig
+	RateLimit *interfaces.RateLimitConfig
+}
+
 type Project struct {
 	Name        string
 	App         *Application
 	Logger      ILogger
 	Factory     IDependencyFactory
 	StartTime   time.Time
-	Config      map[string]interface{}
+	Config      *ProjectConfig
 	initialized bool
 }
 
-func NewProject(name string, factory IDependencyFactory) *Project {
+func NewProject(name string, factory IDependencyFactory, config *ProjectConfig) *Project {
+	if config == nil {
+		config = &ProjectConfig{}
+	}
 	project := &Project{
 		Name:        name,
 		Factory:     factory,
-		Config:      make(map[string]interface{}),
+		Config:      config,
 		initialized: false,
 	}
 	return project
@@ -45,9 +54,18 @@ func (project *Project) Initialize(appName, appVersion string) {
 
 	server := project.Factory.CreateServer()
 
-	for _, route := range GetRoutes() {
-		server.RegisterRoute(route.Method, route.Path, route.Handlers...)
+	// Apply CORS config if provided
+	if project.Config.CORS != nil {
+		server.EnableCORS(*project.Config.CORS)
 	}
+
+	// Apply rate limiting config if provided
+	if project.Config.RateLimit != nil {
+		server.EnableRateLimiting(*project.Config.RateLimit)
+	}
+
+	// Register all routes
+	RegisterRoutes(server)
 
 	project.App.SetServer(server)
 	project.initialized = true
@@ -72,10 +90,3 @@ func (project *Project) Stop(ctx context.Context) error {
 	return project.App.Shutdown(ctx)
 }
 
-func (project *Project) SetConfig(key string, value interface{}) {
-	project.Config[key] = value
-}
-
-func (project *Project) GetConfig(key string) interface{} {
-	return project.Config[key]
-}

@@ -2,15 +2,16 @@ package server
 
 import (
 	"context"
-	"io"
 	"net/http"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/time/rate"
 
 	"cleanandclean/internal/adapter/interfaces"
 )
 
+// GinServer implements IServer using Gin framework
 type GinServer struct {
 	addr       string
 	engine     *gin.Engine
@@ -73,9 +74,25 @@ func (s *GinServer) EnableCORS(config interfaces.CORSConfig) {
 	}))
 }
 
-func (s *GinServer) EnableRateLimiting(config interfaces.RateLimitConfig) {}
+func (s *GinServer) EnableRateLimiting(config interfaces.RateLimitConfig) {
+	limiter := rate.NewLimiter(rate.Limit(config.RequestsPerMinute)/60, config.BurstSize)
 
-// GinRouteGroup
+	s.engine.Use(func(c *gin.Context) {
+		if !limiter.Allow() {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+				"success": false,
+				"error": gin.H{
+					"code":    "RATE_LIMIT_EXCEEDED",
+					"message": "Too many requests",
+				},
+			})
+			return
+		}
+		c.Next()
+	})
+}
+
+// GinRouteGroup implements IRouteGroup using Gin's RouterGroup
 type GinRouteGroup struct {
 	group *gin.RouterGroup
 }
@@ -102,24 +119,3 @@ func toGinHandlers(handlers []interfaces.HandlerFunc) []gin.HandlerFunc {
 	}
 	return result
 }
-
-// GinContext
-type GinContext struct {
-	c *gin.Context
-}
-
-func (ctx *GinContext) Request() *http.Request                             { return ctx.c.Request }
-func (ctx *GinContext) Param(key string) string                            { return ctx.c.Param(key) }
-func (ctx *GinContext) Query(key string) string                            { return ctx.c.Query(key) }
-func (ctx *GinContext) Header(key string) string                           { return ctx.c.GetHeader(key) }
-func (ctx *GinContext) Body() []byte                                       { b, _ := io.ReadAll(ctx.c.Request.Body); return b }
-func (ctx *GinContext) JSON(status int, data interface{})                  { ctx.c.JSON(status, data) }
-func (ctx *GinContext) String(status int, data string)                     { ctx.c.String(status, data) }
-func (ctx *GinContext) Status(status int)                                  { ctx.c.Status(status) }
-func (ctx *GinContext) SetHeader(key, value string)                        { ctx.c.Header(key, value) }
-func (ctx *GinContext) Next()                                              { ctx.c.Next() }
-func (ctx *GinContext) Abort()                                             { ctx.c.Abort() }
-func (ctx *GinContext) AbortWithStatus(status int)                         { ctx.c.AbortWithStatus(status) }
-func (ctx *GinContext) AbortWithJSON(status int, data interface{})         { ctx.c.AbortWithStatusJSON(status, data) }
-func (ctx *GinContext) Set(key string, value interface{})                  { ctx.c.Set(key, value) }
-func (ctx *GinContext) Get(key string) (interface{}, bool)                 { return ctx.c.Get(key) }
