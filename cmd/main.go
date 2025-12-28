@@ -2,51 +2,48 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"cleanandclean/internal"
-	"cleanandclean/internal/adapter/interfaces"
-	"cleanandclean/internal/infrastructure"
+	"cleanandclean/cmd/boot"
 )
 
 func main() {
-	factory := infrastructure.NewDefaultFactory()
+	project := boot.NewProject()
 
-	config := &internal.ProjectConfig{
-		CORS: &interfaces.CORSConfig{
-			AllowOrigins:     []string{"*"},
-			AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-			AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-			AllowCredentials: true,
-		},
-		RateLimit: &interfaces.RateLimitConfig{
-			RequestsPerMinute: 100,
-			BurstSize:         10,
-		},
-	}
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 
-	project := internal.NewProject("Clean Project", factory, config)
-	project.Initialize("Clean Application", "1.0.0")
+	serverErr := make(chan error, 1)
 
-	if err := project.Start(); err != nil {
-		fmt.Printf("Failed to start: %v\n", err)
-		os.Exit(1)
-	}
+	go func() {
+		log.Println("server starting on :8080")
+		serverErr <- project.Run(":8080")
+	}()
 
+	select {
+	case err := <-serverErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("server error: %v", err)
+		}
+	case sig := <-shutdown:
+		log.Printf("shutdown signal received: %v", sig)
 
-	// Wait for interrupt signal
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+		if err := project.Shutdown(ctx); err != nil {
+			log.Printf("graceful shutdown failed: %v", err)
+			if err := project.Close(); err != nil {
+				log.Fatalf("forced shutdown failed: %v", err)
+			}
+		}
 
-	if err := project.Stop(ctx); err != nil {
-		fmt.Printf("Failed to stop: %v\n", err)
+		log.Println("server stopped gracefully")
 	}
 }

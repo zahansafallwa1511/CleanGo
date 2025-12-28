@@ -1,118 +1,138 @@
 package controllers
 
 import (
-	"errors"
 	"net/http"
+	"strconv"
 
-	httpresponse "cleanandclean/internal/adapter/http"
-	"cleanandclean/internal/adapter/interfaces"
-	"cleanandclean/internal/application/post"
+	"cleanandclean/internal/core/usecases/post"
+
+	"github.com/gin-gonic/gin"
 )
 
 type PostController struct {
-	getPostsUseCase  *post.GetPostsUseCase
-	getPostUseCase   *post.GetPostUseCase
-	createPostUseCase *post.CreatePostUseCase
-	updatePostUseCase *post.UpdatePostUseCase
-	deletePostUseCase *post.DeletePostUseCase
+	createUC *post.CreatePostUseCase
+	getUC    *post.GetPostUseCase
+	listUC   *post.ListPostsUseCase
+	updateUC *post.UpdatePostUseCase
+	deleteUC *post.DeletePostUseCase
 }
 
 func NewPostController(
-	getPostsUseCase *post.GetPostsUseCase,
-	getPostUseCase *post.GetPostUseCase,
-	createPostUseCase *post.CreatePostUseCase,
-	updatePostUseCase *post.UpdatePostUseCase,
-	deletePostUseCase *post.DeletePostUseCase,
+	createUC *post.CreatePostUseCase,
+	getUC *post.GetPostUseCase,
+	listUC *post.ListPostsUseCase,
+	updateUC *post.UpdatePostUseCase,
+	deleteUC *post.DeletePostUseCase,
 ) *PostController {
 	return &PostController{
-		getPostsUseCase:   getPostsUseCase,
-		getPostUseCase:    getPostUseCase,
-		createPostUseCase: createPostUseCase,
-		updatePostUseCase: updatePostUseCase,
-		deletePostUseCase: deletePostUseCase,
+		createUC: createUC,
+		getUC:    getUC,
+		listUC:   listUC,
+		updateUC: updateUC,
+		deleteUC: deleteUC,
 	}
 }
 
-func (c *PostController) GetAll(ctx interfaces.IContext) {
-	page := ctx.QueryInt("page", 1)
-	perPage := ctx.QueryInt("per_page", 10)
-
-	posts, total, err := c.getPostsUseCase.Execute(page, perPage)
-	if err != nil {
-		ctx.Error(http.StatusInternalServerError, httpresponse.ErrCodeInternal, "Failed to fetch posts")
-		return
-	}
-
-	totalPages := (total + perPage - 1) / perPage
-	ctx.SuccessWithMeta(http.StatusOK, posts, page, perPage, total, totalPages)
+type CreatePostRequest struct {
+	Title    string `json:"title" binding:"required"`
+	Content  string `json:"content" binding:"required"`
+	AuthorID uint64 `json:"author_id" binding:"required"`
 }
 
-func (c *PostController) GetByID(ctx interfaces.IContext) {
-	id := ctx.Param("id")
-
-	result, err := c.getPostUseCase.Execute(id)
-	if err != nil {
-		if errors.Is(err, post.ErrPostNotFound) {
-			ctx.Error(http.StatusNotFound, httpresponse.ErrCodeNotFound, "Post not found")
-			return
-		}
-		ctx.Error(http.StatusInternalServerError, httpresponse.ErrCodeInternal, "Failed to fetch post")
+func (c *PostController) Create(ctx *gin.Context) {
+	var req CreatePostRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.Success(http.StatusOK, result)
+	output, err := c.createUC.Execute(ctx.Request.Context(), post.CreatePostInput{
+		Title:    req.Title,
+		Content:  req.Content,
+		AuthorID: req.AuthorID,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusCreated, output.Post)
 }
 
-func (c *PostController) Create(ctx interfaces.IContext) {
-	var req post.CreatePostRequest
-	if err := ctx.BindJSON(&req); err != nil {
-		ctx.ValidationError(map[string]string{"error": err.Error()})
-		return
-	}
-
-	result, err := c.createPostUseCase.Execute(req)
+func (c *PostController) Get(ctx *gin.Context) {
+	id, err := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if err != nil {
-		ctx.Error(http.StatusInternalServerError, httpresponse.ErrCodeInternal, "Failed to create post")
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
 
-	ctx.Success(http.StatusCreated, result)
+	output, err := c.getUC.Execute(ctx.Request.Context(), post.GetPostInput{ID: id})
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, output.Post)
 }
 
-func (c *PostController) Update(ctx interfaces.IContext) {
-	id := ctx.Param("id")
+func (c *PostController) List(ctx *gin.Context) {
+	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "10"))
+	offset, _ := strconv.Atoi(ctx.DefaultQuery("offset", "0"))
 
-	var req post.UpdatePostRequest
-	if err := ctx.BindJSON(&req); err != nil {
-		ctx.ValidationError(map[string]string{"error": err.Error()})
-		return
-	}
-
-	result, err := c.updatePostUseCase.Execute(id, req)
+	output, err := c.listUC.Execute(ctx.Request.Context(), post.ListPostsInput{
+		Limit:  limit,
+		Offset: offset,
+	})
 	if err != nil {
-		if errors.Is(err, post.ErrPostNotFound) {
-			ctx.Error(http.StatusNotFound, httpresponse.ErrCodeNotFound, "Post not found")
-			return
-		}
-		ctx.Error(http.StatusInternalServerError, httpresponse.ErrCodeInternal, "Failed to update post")
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	ctx.Success(http.StatusOK, result)
+	ctx.JSON(http.StatusOK, output.Posts)
 }
 
-func (c *PostController) Delete(ctx interfaces.IContext) {
-	id := ctx.Param("id")
+type UpdatePostRequest struct {
+	Title   string `json:"title" binding:"required"`
+	Content string `json:"content" binding:"required"`
+}
 
-	err := c.deletePostUseCase.Execute(id)
+func (c *PostController) Update(ctx *gin.Context) {
+	id, err := strconv.ParseUint(ctx.Param("id"), 10, 64)
 	if err != nil {
-		if errors.Is(err, post.ErrPostNotFound) {
-			ctx.Error(http.StatusNotFound, httpresponse.ErrCodeNotFound, "Post not found")
-			return
-		}
-		ctx.Error(http.StatusInternalServerError, httpresponse.ErrCodeInternal, "Failed to delete post")
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
 		return
 	}
 
-	ctx.Success(http.StatusNoContent, nil)
+	var req UpdatePostRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	output, err := c.updateUC.Execute(ctx.Request.Context(), post.UpdatePostInput{
+		ID:      id,
+		Title:   req.Title,
+		Content: req.Content,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, output.Post)
+}
+
+func (c *PostController) Delete(ctx *gin.Context) {
+	id, err := strconv.ParseUint(ctx.Param("id"), 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+
+	if err := c.deleteUC.Execute(ctx.Request.Context(), post.DeletePostInput{ID: id}); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(http.StatusNoContent, nil)
 }

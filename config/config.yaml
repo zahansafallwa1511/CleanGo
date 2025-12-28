@@ -1,0 +1,11 @@
+database:
+  url: "postgres://localhost:5432/cleanandclean?sslmode=disable"
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: "5m"
+
+server:
+  port: "8080"
+  environment: "development"
+  read_timeout: "10s"
+  write_timeout: "10s"
