@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"cleanandclean/internal/core/domain"
+	"cleanandclean/internal/core/provider"
 )
 
 type CreatePostInput struct {
@@ -16,24 +17,28 @@ type CreatePostOutput struct {
 	Post *domain.Post
 }
 
-type CreatePostUseCase struct {
-	repo PostRepository
-}
+type CreatePostUseCase struct{}
 
-func NewCreatePostUseCase(repo PostRepository) *CreatePostUseCase {
-	return &CreatePostUseCase{repo: repo}
+func NewCreatePostUseCase() *CreatePostUseCase {
+	return &CreatePostUseCase{}
 }
 
 func (uc *CreatePostUseCase) Execute(ctx context.Context, input CreatePostInput) (*CreatePostOutput, error) {
+	repo := uc.repo()
+
 	post := &domain.Post{
 		Title:    input.Title,
 		Content:  input.Content,
 		AuthorID: input.AuthorID,
 	}
 
-	if err := uc.repo.Create(ctx, post); err != nil {
+	if err := repo.Create(ctx, post); err != nil {
 		return nil, err
 	}
 
 	return &CreatePostOutput{Post: post}, nil
+}
+
+func (uc *CreatePostUseCase) repo() PostRepository {
+	return provider.Instance().GetServiceContainer().Get("PostRepository").(PostRepository)
 }

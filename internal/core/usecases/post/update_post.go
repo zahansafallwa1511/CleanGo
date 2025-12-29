@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"cleanandclean/internal/core/domain"
+	"cleanandclean/internal/core/provider"
 )
 
 type UpdatePostInput struct {
@@ -16,16 +17,16 @@ type UpdatePostOutput struct {
 	Post *domain.Post
 }
 
-type UpdatePostUseCase struct {
-	repo PostRepository
-}
+type UpdatePostUseCase struct{}
 
-func NewUpdatePostUseCase(repo PostRepository) *UpdatePostUseCase {
-	return &UpdatePostUseCase{repo: repo}
+func NewUpdatePostUseCase() *UpdatePostUseCase {
+	return &UpdatePostUseCase{}
 }
 
 func (uc *UpdatePostUseCase) Execute(ctx context.Context, input UpdatePostInput) (*UpdatePostOutput, error) {
-	post, err := uc.repo.FindByID(ctx, input.ID)
+	repo := uc.repo()
+
+	post, err := repo.FindByID(ctx, input.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -33,9 +34,13 @@ func (uc *UpdatePostUseCase) Execute(ctx context.Context, input UpdatePostInput)
 	post.Title = input.Title
 	post.Content = input.Content
 
-	if err := uc.repo.Update(ctx, post); err != nil {
+	if err := repo.Update(ctx, post); err != nil {
 		return nil, err
 	}
 
 	return &UpdatePostOutput{Post: post}, nil
+}
+
+func (uc *UpdatePostUseCase) repo() PostRepository {
+	return provider.Instance().GetServiceContainer().Get("PostRepository").(PostRepository)
 }

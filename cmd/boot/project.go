@@ -5,6 +5,7 @@ import (
 
 	"cleanandclean/internal/adapter/controllers"
 	coreInterfaces "cleanandclean/internal/core/interfaces"
+	"cleanandclean/internal/core/provider"
 	"cleanandclean/internal/core/usecases/post"
 	"cleanandclean/internal/infra"
 	"cleanandclean/internal/infra/repositories"
@@ -17,6 +18,10 @@ type Project struct {
 
 func NewProject() *Project {
 	factory := infra.MustNewFactory()
+
+	// Initialize CoreProvider so use cases can access services
+	provider.Init(infra.NewCoreFactoryAdapter(factory))
+
 	container := factory.GetServiceContainer()
 	router := factory.GetRouter()
 
@@ -35,15 +40,14 @@ func NewProject() *Project {
 
 func registerServices(c coreInterfaces.IServiceContainer) {
 	// Repositories
-	postRepo := repositories.NewInMemoryPostRepository()
-	c.Set("PostRepository", postRepo)
+	c.Set("PostRepository", repositories.NewInMemoryPostRepository())
 
-	// Use cases
-	c.Set("CreatePostUseCase", post.NewCreatePostUseCase(postRepo))
-	c.Set("GetPostUseCase", post.NewGetPostUseCase(postRepo))
-	c.Set("ListPostsUseCase", post.NewListPostsUseCase(postRepo))
-	c.Set("UpdatePostUseCase", post.NewUpdatePostUseCase(postRepo))
-	c.Set("DeletePostUseCase", post.NewDeletePostUseCase(postRepo))
+	// Use cases (no dependencies needed - they use CoreProvider)
+	c.Set("CreatePostUseCase", post.NewCreatePostUseCase())
+	c.Set("GetPostUseCase", post.NewGetPostUseCase())
+	c.Set("ListPostsUseCase", post.NewListPostsUseCase())
+	c.Set("UpdatePostUseCase", post.NewUpdatePostUseCase())
+	c.Set("DeletePostUseCase", post.NewDeletePostUseCase())
 
 	// Controllers
 	c.Set("HealthController", controllers.NewHealthController())
